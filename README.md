@@ -1,4 +1,4 @@
-# EtherscanAPI
+# EtherscanAPI / Geth
 A Go project containing a library blockchain query functionality. When building various trading tools there are isntances where it can take serious lengths of time
 to build up the datasets relying on the etherscan API.
 
