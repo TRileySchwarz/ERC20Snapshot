@@ -15,8 +15,13 @@ func main() {
 	// hash := "0x06d0eb420066385183109fdc851a944cd17dc4bff1a339f8f5f69412f9c14115"
 	// lib.GetTxByHash(hash)
 
-	blockHex := "0x06d0"
-	lib.GetBlockByNumber(blockHex)
+	startBlock := uint64(5000000)
+	numberOfBlocks := uint64(1000)
 
+	for i := startBlock; i < startBlock+numberOfBlocks; i++ {
+		lib.GetBlockByNumber(i)
+	}
+
+	fmt.Println("Done")
 	fmt.Println("\n")
 }

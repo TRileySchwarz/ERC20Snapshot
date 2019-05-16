@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"io/ioutil"
 	"net/http"
 )
@@ -28,10 +29,10 @@ type GetTxPayload struct {
 }
 
 type GetBlockByNumberPayload struct {
-	Jsonrpc string                   `json:"jsonrpc,omitempty"`
-	Method  string                   `json:"method,omitempty"`
+	Jsonrpc string        `json:"jsonrpc,omitempty"`
+	Method  string        `json:"method,omitempty"`
 	Params  []interface{} `json:"params,omitempty"`
-	ID      int                      `json:"id,omitempty"`
+	ID      int           `json:"id,omitempty"`
 }
 
 func GetEthLog(address string) {
@@ -57,18 +58,19 @@ func GetEthLog(address string) {
 	printGetLogs(responseString)
 }
 
+func GetBlockByNumber(blockNumber uint64) {
+	hexString := hexutil.EncodeUint64(blockNumber)
 
-func GetBlockByNumber(blockNumberHex string) {
 	currentPayload := GetBlockByNumberPayload{
 		Jsonrpc: "2.0",
 		Method:  "eth_getBlockByNumber",
 		Params: []interface{}{
-			"0x558913",
+			hexString,
 			true,
 		},
 		ID: 1,
 	}
-	fmt.Printf("\n The payload created is as follows: %+v \n", currentPayload)
+	//fmt.Printf("\n The payload created is as follows: %+v \n", currentPayload)
 
 	body, err := json.Marshal(currentPayload)
 	if err != nil {
@@ -105,7 +107,7 @@ func GetTxByHash(txHash string) {
 }
 
 func getPostRequest(body *bytes.Reader) string {
-	req, err := http.NewRequest("POST", "https://geth-r1.etherparty.com/", body)
+	req, err := http.NewRequest("POST", "https://ropsten.infura.io/", body)
 	if err != nil {
 		fmt.Println(err)
 		return ""
@@ -158,16 +160,26 @@ func printGetBlock(bytesString string) {
 	var response BlockResponse
 
 	json.Unmarshal([]byte(bytesString), &response)
-	
+
 	//bs, _ := json.Marshal(response)
 	//fmt.Printf("%s", bs)
 
-	printTxValues(response.Result.Transactions)
+	//printTxValues(response.Result.Transactions)
+
+	//i, err := hexutil.DecodeUint64(response.Result.Number)
+	////i, err:= strconv.ParseInt("558913", 16, 64)
+	//if err != nil {
+	//	fmt.Println(err)
+	//}
+	//
+	//fmt.Printf("There are %v transactions inside of block %v", len(response.Result.Transactions), i)
 }
 
 func printTxValues(arrayOfTransactions []TxResponse) {
 
-	for _, tx := range arrayOfTransactions {
-		fmt.Println(tx.Hash)
-	}
+	fmt.Println(len(arrayOfTransactions))
+
+	//for _, tx := range arrayOfTransactions {
+	//	fmt.Println(tx.Hash)
+	//}
 }
