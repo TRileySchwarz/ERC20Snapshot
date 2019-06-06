@@ -3,7 +3,25 @@ package lib
 type GetLogsResponse struct {
 	Status  string `json:"status,omitempty"`
 	Message string `json:"message,omitempty"`
-	Result  []Tx   `json:"result,omitempty"`
+	Result  []GetLogsTxResponse   `json:"result,omitempty"`
+	Error 	GetLogsErrorResponse `json:"error,omitempty"`
+}
+
+type GetLogsErrorResponse struct {
+	Code int `json:"code,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+type GetLogsTxResponse struct {
+	Address        string `json:"address,omitempty"`
+	Topics      []string `json:"topics,omitempty"`
+	Data            string `json:"data,omitempty"`
+	BlockNumber              string `json:"blockNumber,omitempty"`
+	TransactionHash         string `json:"transactionHash,omitempty"`
+	TransactionIndex            string `json:"transactionIndex,omitempty"`
+	BlockHash            string `json:"blockHash,omitempty"`
+	LogIndex           string `json:"logIndex,omitempty"`
+	Removed               bool `json:"removed,omitempty"`
 }
 
 type Tx struct {
