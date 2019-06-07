@@ -5,6 +5,10 @@ import (
 	"github.com/TRileySchwarz/EtherscanAPI/lib"
 )
 
+var InfuraProvider = "https://mainnet.infura.io/"
+var VanbexProvider = "https://geth-m1.etherparty.com/"
+var RopstenProvider = "https://geth-r1.etherparty.com/"
+
 func main() {
 
 	fmt.Println("\n")
@@ -12,18 +16,18 @@ func main() {
 	fmt.Println("\n")
 
 
-	fromBlockNumber := 7898966
-	toblockNumber := 7901263
+	blockNumber := 7913731
 	tokenAddress := "0xEA38eAa3C86c8F9B751533Ba2E562deb9acDED40"
+	currentProvider := InfuraProvider
 
 	//hashOfTransferEvent := ""
 
 	fmt.Println("Creating a snapshot for token: " + tokenAddress);
-	fmt.Printf("From blocks: %v to %v \n", fromBlockNumber, toblockNumber);
-	fmt.Println("Using provider: " + lib.Provider);
+	fmt.Printf("At block: %v\n", blockNumber);
+	fmt.Printf("Using provider: %v\n\n", currentProvider);
 
 
-	lib.BuildSnapshot(tokenAddress, uint64(fromBlockNumber), uint64(toblockNumber));
+	lib.BuildSnapshot(tokenAddress, currentProvider, int64(blockNumber));
 
 	fmt.Println("\n")
 	fmt.Println("-- Closing Program --")

@@ -1,15 +1,13 @@
 package lib
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"io/ioutil"
 	"log"
-	"net/http"
+	"math/big"
 )
 
 type GetLogPayload struct {
@@ -39,14 +37,10 @@ type GetBlockByNumberPayload struct {
 	ID      int           `json:"id,omitempty"`
 }
 
-// var Provider = "https://mainnet.infura.io/"
-var Provider = "https://geth-m1.etherparty.com/"
-var RopstenProvider = "https://geth-r1.etherparty.com/"
-
-func BuildSnapshot(tokenAddress string, fromBlock uint64, toBlock uint64) {
+func BuildSnapshot(tokenAddress string, provider string, block int64) {
 
 	// Create an IPC based RPC connection to a remote node
-	conn, err := ethclient.Dial(Provider)
+	conn, err := ethclient.Dial(provider)
 	if err != nil {
 		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
 	}
@@ -55,42 +49,61 @@ func BuildSnapshot(tokenAddress string, fromBlock uint64, toBlock uint64) {
 	if err != nil {
 		log.Fatalf("Failed to instantiate a Token contract: %v", err)
 	}
-	name, err := token.Name(nil)
-	if err != nil {
-		log.Fatalf("Failed to retrieve token name: %v", err)
+
+	arrayOfWallets := GetTokenWallets()
+
+	for _, element := range arrayOfWallets{
+		GetBalanceAtBlock(element, block, token)
 	}
-	fmt.Println("Token name:", name)
-	
-	//GetEthLog(tokenAddress, fromBlock, toBlock)
 }
 
-func GetEthLog(address string, fromBlock uint64, toBlock uint64) {
-
-	fromHexString := hexutil.EncodeUint64(fromBlock)
-	toHexString := hexutil.EncodeUint64(toBlock)
-
-	currentPayload := GetLogPayload{
-		Jsonrpc: "2.0",
-		Method:  "eth_getLogs",
-		Params: []GetLogParams{GetLogParams{
-			FromBlock: fromHexString,
-			ToBlock: toHexString,
-			Address:   address,
-		}},
-		ID: 74,
+func GetBalanceAtBlock(walletAddress string, block int64, token *ERC20Token) {
+	ops := &bind.CallOpts{
+		BlockNumber: big.NewInt(block),
 	}
-	fmt.Printf("\n Using Payload: %+v \n", currentPayload)
 
-	body, err := json.Marshal(currentPayload)
+	hexAddress := common.HexToAddress(walletAddress)
+
+	balance, err := token.BalanceOf(ops, hexAddress)
 	if err != nil {
-		fmt.Println(err)
+		log.Fatalf("Failed to retrieve token balance: %v", err)
 	}
-
-	var readerBody = bytes.NewReader(body)
-	responseString := getPostRequest(readerBody)
-
-	printGetLogs(responseString)
+	fmt.Printf("Token balance for address %v - %v \n", walletAddress, balance)
 }
+
+func GetTokenWallets() ([]string) {
+	arrayToReturn := []string{"0x3f5CE5FBFe3E9af3971dD833D26bA9b5C936f0bE", "0x0D0707963952f2fBA59dD06f2b425ace40b492Fe"}
+
+	return arrayToReturn
+}
+
+//func GetEthLog(address string, fromBlock uint64, toBlock uint64) {
+//
+//	fromHexString := hexutil.EncodeUint64(fromBlock)
+//	toHexString := hexutil.EncodeUint64(toBlock)
+//
+//	currentPayload := GetLogPayload{
+//		Jsonrpc: "2.0",
+//		Method:  "eth_getLogs",
+//		Params: []GetLogParams{GetLogParams{
+//			FromBlock: fromHexString,
+//			ToBlock: toHexString,
+//			Address:   address,
+//		}},
+//		ID: 74,
+//	}
+//	fmt.Printf("\n Using Payload: %+v \n", currentPayload)
+//
+//	body, err := json.Marshal(currentPayload)
+//	if err != nil {
+//		fmt.Println(err)
+//	}
+//
+//	var readerBody = bytes.NewReader(body)
+//	responseString := getPostRequest(readerBody)
+//
+//	printGetLogs(responseString)
+//}
 
 //func GetBlockByNumber(blockNumber uint64) {
 //	hexString := hexutil.EncodeUint64(blockNumber)
@@ -118,30 +131,30 @@ func GetEthLog(address string, fromBlock uint64, toBlock uint64) {
 //}
 
 
-func getPostRequest(body *bytes.Reader) string {
-	req, err := http.NewRequest("POST", Provider, body)
-	if err != nil {
-		fmt.Println(err)
-		return ""
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		fmt.Println(err)
-		return ""
-	}
-	defer resp.Body.Close()
-
-	responseBody, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Println(err)
-		return ""
-	}
-
-	return string(responseBody)
-}
+//func getPostRequest(body *bytes.Reader) string {
+//	req, err := http.NewRequest("POST", Provider, body)
+//	if err != nil {
+//		fmt.Println(err)
+//		return ""
+//	}
+//
+//	req.Header.Set("Content-Type", "application/json")
+//
+//	resp, err := http.DefaultClient.Do(req)
+//	if err != nil {
+//		fmt.Println(err)
+//		return ""
+//	}
+//	defer resp.Body.Close()
+//
+//	responseBody, err := ioutil.ReadAll(resp.Body)
+//	if err != nil {
+//		fmt.Println(err)
+//		return ""
+//	}
+//
+//	return string(responseBody)
+//}
 
 //func printRequestByteResult(bytesArray []byte) {
 //
