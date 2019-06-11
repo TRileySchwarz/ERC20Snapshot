@@ -5,7 +5,7 @@ import (
 	"github.com/TRileySchwarz/EtherscanAPI/lib"
 )
 
-var InfuraProvider = "https://mainnet.infura.io/"
+var InfuraProvider = "https://mainnet.infura.io/v3/"
 var VanbexProvider = "https://geth-m1.etherparty.com/"
 var RopstenProvider = "https://geth-r1.etherparty.com/"
 
@@ -16,9 +16,11 @@ func main() {
 	fmt.Println("\n")
 
 
-	blockNumber := 7913731
+	// When setting the parameters we need to be careful about how many request we are pulling unless
+	// we get a api key from infura
+	blockNumber := 4302785
 	tokenAddress := "0xEA38eAa3C86c8F9B751533Ba2E562deb9acDED40"
-	currentProvider := InfuraProvider
+	currentProvider := InfuraProvider + lib.ProjectID
 
 	//hashOfTransferEvent := ""
 
@@ -28,6 +30,12 @@ func main() {
 
 
 	lib.BuildSnapshot(tokenAddress, currentProvider, int64(blockNumber));
+
+	lib.TokenLedger["0xa"] = "1000"
+	lib.TokenLedger["0xb"] = "1000"
+
+	//lib.ProcessTransfer("0xa", "0xb", "123")
+
 
 	fmt.Println("\n")
 	fmt.Println("-- Closing Program --")

@@ -44,7 +44,7 @@ type Tx struct {
 type GetTxResponse struct {
 	Jsonrpc string     `json:"jsonrpc,omitempty"`
 	ID      int        `json:"id,omitempty"`
-	Result  TxResponse `json:"result,omitempty"`
+	Result  []TxResponse `json:"result,omitempty"`
 }
 
 type TxResponse struct {

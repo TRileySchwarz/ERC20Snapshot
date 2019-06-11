@@ -10,6 +10,7 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"strconv"
 )
 
 //type GetLogPayload struct {
@@ -55,7 +56,13 @@ type Wallet struct {
 	Balance string `json:"balance,omitempty"`
 }
 
+type ERC20Ledger struct {
+	Wallets map[string]Wallet `json:"wallets,omitempty"`
+}
+
 var EtherscanBaseURl = "https://api.etherscan.io/api?module=account&action=tokentx"
+
+var TokenLedger = make(map[string]string)
 
 
 func BuildSnapshot(tokenAddress string, provider string, block int64) {
@@ -73,11 +80,12 @@ func BuildSnapshot(tokenAddress string, provider string, block int64) {
 	}
 
 	// Returns all wallets located in the token
-	arrayOfWallets := GetTokenWallets(tokenAddress)
+	arrayOfWallets := GetTokenWallets(tokenAddress, block)
 
 	for _, element := range arrayOfWallets{
 		GetBalanceAtBlock(element, block, token)
 	}
+
 }
 
 func GetBalanceAtBlock(walletAddress string, block int64, token *ERC20Token) {
@@ -91,6 +99,14 @@ func GetBalanceAtBlock(walletAddress string, block int64, token *ERC20Token) {
 	if err != nil {
 		log.Fatalf("Failed to retrieve token balance: %v", err)
 	}
+
+	actual := balance.String()
+	expected := TokenLedger[walletAddress]
+
+	if(actual != expected){
+		fmt.Printf("\n UHOH expected %v to be == to %v \n", actual, expected)
+	}
+
 	fmt.Printf("Token balance for address %v - %v \n", walletAddress, balance)
 }
 
@@ -98,45 +114,87 @@ func GetBalanceAtBlock(walletAddress string, block int64, token *ERC20Token) {
 // We can verify these numbers as totalling all the holders should equal the total supply.
 // By using two different sources, Etherscan and the chosen Geth Node, you can ensure your data is credible
 // Versus relying on one source for both pieces of information
-func GetTokenWallets(tokenAddress string) ([]string) {
+func GetTokenWallets(tokenAddress string, endBlock int64) ([]string) {
+	pageNumber := 1
+	maxResults := 1000
 
-	url := EtherscanBaseURl + "&contractaddress=" + tokenAddress
-	// + "&page=" 1
-	// + "&offset=" 100
-	// + "&sort=" asc
-	//+ "&apikey=" YourApiKeyToken
+	for pageNumber < 2 {
+		url := EtherscanBaseURl + "&contractaddress=" + tokenAddress + "&page=" + strconv.Itoa(pageNumber) + "&offset=" + strconv.Itoa(maxResults) + "&sort=asc" + "&endblock=" + strconv.FormatInt(endBlock, 10)
 
-	println(url)
+		println(url)
 
-	resp, err := http.Get(url)
-	if err != nil {
-		fmt.Println(err)
-		//return
+		resp, err := http.Get(url)
+		if err != nil {
+			fmt.Println(err)
+			//return
+		}
+
+		defer resp.Body.Close()
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Println(err)
+			//return
+		}
+
+		test := string(body)
+
+		var response GetTxResponse
+
+		json.Unmarshal([]byte(test), &response)
+
+		for _, tx := range response.Result {
+			ProcessTransfer(tx.From, tx.To, tx.Value)
+		}
+
+		//bs, _ := json.Marshal(response)
+
+		//fmt.Printf("%s", bs)
+
+		pageNumber++
 	}
 
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Println(err)
-		//return
+	//fmt.Print(TokenLedger)
+
+	//arrayToReturn := []string{"0x3f5CE5FBFe3E9af3971dD833D26bA9b5C936f0bE", "0x0D0707963952f2fBA59dD06f2b425ace40b492Fe"}
+
+	return GetKeys(TokenLedger)
+}
+
+func GetKeys(mapping map[string]string) ([]string){
+	arrayToReturn := make([]string, len(mapping))
+
+	i := 0
+
+	for key, _ := range mapping {
+		arrayToReturn[i] = key
+		i += 1
 	}
-
-
-
-	test := string(body)
-
-	var response GetLogsResponse
-
-	json.Unmarshal([]byte(test), &response)
-
-	bs, _ := json.Marshal(response)
-
-	fmt.Printf("%s", bs)
-
-
-	arrayToReturn := []string{"0x3f5CE5FBFe3E9af3971dD833D26bA9b5C936f0bE", "0x0D0707963952f2fBA59dD06f2b425ace40b492Fe"}
 
 	return arrayToReturn
+}
+
+func ProcessTransfer(fromAddress string, toAddress string, amount string) {
+	//fmt.Print(TokenLedger)
+
+	fromAmount := TokenLedger[fromAddress];
+	toAmount := TokenLedger[toAddress];
+
+	fromAmountInt := big.NewInt(0)
+	fromAmountInt.SetString(fromAmount, 10)
+
+	toAmountInt := big.NewInt(0)
+	toAmountInt.SetString(toAmount, 10)
+
+	transferAmountInt := big.NewInt(0)
+	transferAmountInt.SetString(amount, 10)
+
+	fromAmountInt = fromAmountInt.Sub(fromAmountInt, transferAmountInt)
+	toAmountInt = toAmountInt.Add(toAmountInt, transferAmountInt)
+
+	TokenLedger[fromAddress] = fromAmountInt.Text(10)
+	TokenLedger[toAddress] = toAmountInt.Text(10)
+
+	//fmt.Print(TokenLedger)
 }
 
 //func GetEthLog(address string, fromBlock uint64, toBlock uint64) {
