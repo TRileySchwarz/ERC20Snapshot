@@ -15,3 +15,4 @@
 .vscode
 .idea
 lib/env.go
+lib/notes.go

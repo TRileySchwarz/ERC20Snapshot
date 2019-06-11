@@ -1,6 +1,7 @@
 package lib
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -10,45 +11,19 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"os"
 	"strconv"
 )
 
-//type GetLogPayload struct {
-//	Jsonrpc string         `json:"jsonrpc,omitempty"`
-//	Method  string         `json:"method,omitempty"`
-//	Params  []GetLogParams `json:"params,omitempty"`
-//	ID      int            `json:"id,omitempty"`
-//}
-//
-//type GetLogParams struct {
-//	FromBlock string `json:"fromBlock,omitempty"`
-//	ToBlock string `json:"toBlock,omitempty"`
-//	Address   string `json:"address,omitempty"`
-//}
-//
-//type GetTxPayload struct {
-//	Jsonrpc string   `json:"jsonrpc,omitempty"`
-//	Method  string   `json:"method,omitempty"`
-//	Params  []string `json:"params,omitempty"`
-//	ID      int      `json:"id,omitempty"`
-//}
-//
-//type GetBlockByNumberPayload struct {
-//	Jsonrpc string        `json:"jsonrpc,omitempty"`
-//	Method  string        `json:"method,omitempty"`
-//	Params  []interface{} `json:"params,omitempty"`
-//	ID      int           `json:"id,omitempty"`
-//}
-
 type Snapshot struct {
-	TokenAddress string `json:"tokenAddress,omitempty"`
-	StartBlock string `json:"startBlock,omitempty"`
-	EndBlock string `json:"endBlock,omitempty"`
-	Balances []WalletAddress `json:"balances,omitempty"`
+	TokenAddress string          `json:"tokenAddress,omitempty"`
+	StartBlock   string          `json:"startBlock,omitempty"`
+	EndBlock     string          `json:"endBlock,omitempty"`
+	Balances     []WalletAddress `json:"balances,omitempty"`
 }
 
 type WalletAddress struct {
-	Address string `json:"address,omitempty"`
+	Address       string `json:"address,omitempty"`
 	WalletDetails Wallet `json:"walletDetails,omitempty"`
 }
 
@@ -60,11 +35,28 @@ type ERC20Ledger struct {
 	Wallets map[string]Wallet `json:"wallets,omitempty"`
 }
 
+// Base URL used for querying Etherscan API token tx
 var EtherscanBaseURl = "https://api.etherscan.io/api?module=account&action=tokentx"
 
+// The max number of results returned by the Etherscan API
+var maxResults = 10000
+
+// Token ledger responsible for holding the values obtained via Etherscan API
 var TokenLedger = make(map[string]string)
 
+// Used to indicate the last block number we parsed
+var lastBlockParsed = big.NewInt(0)
 
+// Used to indicate the total amount of minted tokens ie total supply in most cases for valid ERC20
+var totalMintedAmount = ""
+
+// Stores the zero address wallet
+var zeroAddress = "0x0000000000000000000000000000000000000000"
+
+// Indicates whether to print verbose msgs
+var Verbose = false
+
+// Used to build a ERC20 token balance snapshot at a given token address, block number, using a specified provider
 func BuildSnapshot(tokenAddress string, provider string, block int64) {
 
 	// Create an IPC based RPC connection to a remote node
@@ -73,94 +65,198 @@ func BuildSnapshot(tokenAddress string, provider string, block int64) {
 		log.Fatalf("Failed to connect to the Ethereum client: %v", err)
 	}
 
-	// Instantiate the contract and display its name
+	// Instantiate the contract to query contract balance
 	token, err := NewERC20Token(common.HexToAddress(tokenAddress), conn)
 	if err != nil {
 		log.Fatalf("Failed to instantiate a Token contract: %v", err)
 	}
 
-	// Returns all wallets located in the token
+	// Returns all wallets located in the token according to Etherscan
 	arrayOfWallets := GetTokenWallets(tokenAddress, block)
 
-	for _, element := range arrayOfWallets{
+	// Check all of the balances obtained during Etherscan parse compared to Geth query
+	for _, element := range arrayOfWallets {
 		GetBalanceAtBlock(element, block, token)
 	}
 
+	// Writes the values to a local csv file
+	WriteToCsv(arrayOfWallets)
 }
 
+// Takes in an array of wallet addresses and writes the corresponding values into a csv
+func WriteToCsv(arrayOfWallets []string) {
+	PrintVerbose("Start of WriteToCSV \n")
+
+	// Creates a new blank file for storing the resulting csv
+	file, err := os.Create("result.csv")
+	if err != nil {
+		log.Fatal("error creating the initial csv file", err)
+	}
+	defer file.Close()
+
+	// Create a 2d array of strings to push into the csv writer
+	storedValues := make([][]string, len(arrayOfWallets))
+
+	// Populate the data struct to push to csv
+	for i := range storedValues {
+		currentWallet := arrayOfWallets[i]
+
+		storedValues[i] = []string{currentWallet, TokenLedger[currentWallet]}
+	}
+
+	// Create a new writer responsible for handling the write to file
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	// Parse the 2d array and input values into writer
+	for _, value := range storedValues {
+		if err := writer.Write(value); err != nil {
+			log.Fatalln("error writing record to csv:", err)
+		}
+	}
+
+	// Ensure there are no errors during the writing process
+	if err := writer.Error(); err != nil {
+		log.Fatal(err)
+	}
+
+	PrintVerbose("End of WriteToCSV\n")
+}
+
+// Takes in a given wallet address, a block number, and a ERC20Token contract
+// Then the Geth node provider set upon instantiation is used to query the Ethereum Blockchain at
+// the specific block for the amount of tokens held by that wallet
 func GetBalanceAtBlock(walletAddress string, block int64, token *ERC20Token) {
+	//PrintVerbose("Start of GetBalanceAtBlock\n")
+
+	// Create a new CallOpts instance specifying the block of interest
 	ops := &bind.CallOpts{
 		BlockNumber: big.NewInt(block),
 	}
 
+	// Converts address to hex values
 	hexAddress := common.HexToAddress(walletAddress)
 
+	// Determine the balance of the wallet
 	balance, err := token.BalanceOf(ops, hexAddress)
 	if err != nil {
 		log.Fatalf("Failed to retrieve token balance: %v", err)
 	}
 
+	// Create values to very our results from Etherscan mixed with the Geth Results
+	// If confident that the Etherscan is only returning values we care about, then we comment out this step
 	actual := balance.String()
 	expected := TokenLedger[walletAddress]
 
-	if(actual != expected){
-		fmt.Printf("\n UHOH expected %v to be == to %v \n", actual, expected)
+	if actual != expected {
+		log.Fatalf("\n Mismatched balances, expected wallet: %v to contain %v, instead it contains %v \n",
+			walletAddress,
+			actual,
+			expected,
+		)
 	}
 
-	fmt.Printf("Token balance for address %v - %v \n", walletAddress, balance)
+	//PrintVerbose("End of GetBalanceAtBlock\n")
+
+	//fmt.Printf("Token balance for address %v - %v \n", walletAddress, balance)
 }
 
-// We will use Etherescan to build a list of all wallets holding tokens at a given block.
-// We can verify these numbers as totalling all the holders should equal the total supply.
-// By using two different sources, Etherscan and the chosen Geth Node, you can ensure your data is credible
+// We will use Etherscan to build a list of all wallets holding tokens at a given block.
+// We can verify these numbers as total all the holders should equal the total supply.
+// By using two different sources, Etherscan and the chosen Geth Node Provider, you can ensure your data is credible
 // Versus relying on one source for both pieces of information
-func GetTokenWallets(tokenAddress string, endBlock int64) ([]string) {
+func GetTokenWallets(tokenAddress string, endBlock int64) []string {
+	PrintVerbose("Start of GetTokenWallet\n")
+
+	// Initial page number to paginate response
 	pageNumber := 1
-	maxResults := 1000
+	// This is needed to deal with tokens that contain more than 10000 transfer events
+	currentNumResults := maxResults
 
-	for pageNumber < 2 {
-		url := EtherscanBaseURl + "&contractaddress=" + tokenAddress + "&page=" + strconv.Itoa(pageNumber) + "&offset=" + strconv.Itoa(maxResults) + "&sort=asc" + "&endblock=" + strconv.FormatInt(endBlock, 10)
+	// As long as our returned results array is greater than the maximum returned amount by the api,
+	// it indicates we havent reached the last page yet
+	for currentNumResults == maxResults {
+		PrintVerbose("start of get request")
 
-		println(url)
+		// Etherscan API url
+		url := EtherscanBaseURl +
+			"&contractaddress=" +
+			tokenAddress + "&page=" +
+			strconv.Itoa(pageNumber) +
+			"&offset=" +
+			strconv.Itoa(maxResults) +
+			"&sort=dsc" +
+			"&endblock=" +
+			strconv.FormatInt(endBlock, 10)
 
+		fmt.Printf("Querying Etherscan API with the following url: %v \n", url)
+
+		PrintVerbose("1")
+
+		// Create httpGet Response
 		resp, err := http.Get(url)
-		if err != nil {
-			fmt.Println(err)
-			//return
-		}
 
+		PrintVerbose("2")
+		if err != nil {
+			log.Fatal(err)
+		}
 		defer resp.Body.Close()
+
+		PrintVerbose("3")
+		// Read the response body
 		body, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			fmt.Println(err)
-			//return
+			log.Fatal(err)
 		}
 
-		test := string(body)
+		PrintVerbose("4")
+		// Cast the body as a string
+		bodyString := string(body)
 
+		PrintVerbose("5")
+		// Marshall the json body to response
 		var response GetTxResponse
+		json.Unmarshal([]byte(bodyString), &response)
 
-		json.Unmarshal([]byte(test), &response)
-
+		PrintVerbose("Start Process Transfer")
+		// Parse the array of transactions to store the concurrent balances
 		for _, tx := range response.Result {
-			ProcessTransfer(tx.From, tx.To, tx.Value)
+			ProcessTransfer(tx.From, tx.To, tx.Value, tx.BlockNumber)
 		}
 
-		//bs, _ := json.Marshal(response)
+		PrintVerbose("End process Transfer")
 
+		// Uncomment if you wish to see the byte slice result of the marshalling
+		//bs, _ := json.Marshal(response)
 		//fmt.Printf("%s", bs)
 
 		pageNumber++
+		currentNumResults = len(response.Result)
+
+		PrintVerbose("end of get request")
 	}
 
-	//fmt.Print(TokenLedger)
+	// Resets the zero address value to actual balance, assumes that nobody burnt tokens by sending to zero address
+	// by accident...
+	totalMintedAmount = TokenLedger[zeroAddress]
+	TokenLedger[zeroAddress] = "0"
 
-	//arrayToReturn := []string{"0x3f5CE5FBFe3E9af3971dD833D26bA9b5C936f0bE", "0x0D0707963952f2fBA59dD06f2b425ace40b492Fe"}
+	PrintVerbose("End of GetTokenWallets\n")
 
+	// Once the ledger has been updated return an array of all the token holder wallet addresses
 	return GetKeys(TokenLedger)
 }
 
-func GetKeys(mapping map[string]string) ([]string){
+func PrintVerbose(msg string) {
+	if(Verbose) {
+		log.Print(msg)
+	}
+}
+
+// Consume a mapping of addresses and returns just an array of strings representing an array of the key values
+func GetKeys(mapping map[string]string) []string {
+	PrintVerbose("Start of GetKeys\n")
+
 	arrayToReturn := make([]string, len(mapping))
 
 	i := 0
@@ -170,14 +266,25 @@ func GetKeys(mapping map[string]string) ([]string){
 		i += 1
 	}
 
+	PrintVerbose("End of GetKeys\n")
 	return arrayToReturn
 }
 
-func ProcessTransfer(fromAddress string, toAddress string, amount string) {
-	//fmt.Print(TokenLedger)
+// Take in a transaction and updates the ledger balances
+// This assumes transactions Are parsed chronologically
+func ProcessTransfer(fromAddress string, toAddress string, amount string, blockNumber string) {
+	// Checks that we are parsing the transactions in order
+	blockNumberInt := big.NewInt(0)
+	blockNumberInt.SetString(blockNumber, 10)
 
-	fromAmount := TokenLedger[fromAddress];
-	toAmount := TokenLedger[toAddress];
+	if blockNumberInt.Cmp(lastBlockParsed) == -1 {
+		log.Fatal("A previous block has been parsed that shouldn't have been")
+	} else {
+		lastBlockParsed = blockNumberInt
+	}
+
+	fromAmount := TokenLedger[fromAddress]
+	toAmount := TokenLedger[toAddress]
 
 	fromAmountInt := big.NewInt(0)
 	fromAmountInt.SetString(fromAmount, 10)
@@ -194,142 +301,4 @@ func ProcessTransfer(fromAddress string, toAddress string, amount string) {
 	TokenLedger[fromAddress] = fromAmountInt.Text(10)
 	TokenLedger[toAddress] = toAmountInt.Text(10)
 
-	//fmt.Print(TokenLedger)
 }
-
-//func GetEthLog(address string, fromBlock uint64, toBlock uint64) {
-//
-//	fromHexString := hexutil.EncodeUint64(fromBlock)
-//	toHexString := hexutil.EncodeUint64(toBlock)
-//
-//	currentPayload := GetLogPayload{
-//		Jsonrpc: "2.0",
-//		Method:  "eth_getLogs",
-//		Params: []GetLogParams{GetLogParams{
-//			FromBlock: fromHexString,
-//			ToBlock: toHexString,
-//			Address:   address,
-//		}},
-//		ID: 74,
-//	}
-//	fmt.Printf("\n Using Payload: %+v \n", currentPayload)
-//
-//	body, err := json.Marshal(currentPayload)
-//	if err != nil {
-//		fmt.Println(err)
-//	}
-//
-//	var readerBody = bytes.NewReader(body)
-//	responseString := getPostRequest(readerBody)
-//
-//	printGetLogs(responseString)
-//}
-
-//func GetBlockByNumber(blockNumber uint64) {
-//	hexString := hexutil.EncodeUint64(blockNumber)
-//
-//	currentPayload := GetBlockByNumberPayload{
-//		Jsonrpc: "2.0",
-//		Method:  "eth_getBlockByNumber",
-//		Params: []interface{}{
-//			hexString,
-//			true,
-//		},
-//		ID: 1,
-//	}
-//	//fmt.Printf("\n The payload created is as follows: %+v \n", currentPayload)
-//
-//	body, err := json.Marshal(currentPayload)
-//	if err != nil {
-//		fmt.Println(err)
-//	}
-//
-//	var readerBody = bytes.NewReader(body)
-//	responseString := getPostRequest(readerBody)
-//
-//	printGetBlock(responseString)
-//}
-
-
-//func getPostRequest(body *bytes.Reader) string {
-//	req, err := http.NewRequest("POST", Provider, body)
-//	if err != nil {
-//		fmt.Println(err)
-//		return ""
-//	}
-//
-//	req.Header.Set("Content-Type", "application/json")
-//
-//	resp, err := http.DefaultClient.Do(req)
-//	if err != nil {
-//		fmt.Println(err)
-//		return ""
-//	}
-//	defer resp.Body.Close()
-//
-//	responseBody, err := ioutil.ReadAll(resp.Body)
-//	if err != nil {
-//		fmt.Println(err)
-//		return ""
-//	}
-//
-//	return string(responseBody)
-//}
-
-//func printRequestByteResult(bytesArray []byte) {
-//
-//	readerBody := string(bytesArray)
-//
-//	printGetTx(readerBody)
-//}
-
-//func printGetLogs(bytesString string) {
-//	var response GetLogsResponse
-//
-//	json.Unmarshal([]byte(bytesString), &response)
-//	bs, _ := json.Marshal(response)
-//
-//	if(response.Error.Message != "") {
-//		fmt.Println("\n Oops, there was an error in the request!")
-//		fmt.Printf("%s", bs)
-//	} else {
-//		fmt.Printf("%s", bs)
-//	}
-//}
-
-//func printGetTx(bytesString string) {
-//	var response GetTxResponse
-//
-//	json.Unmarshal([]byte(bytesString), &response)
-//	bs, _ := json.Marshal(response)
-//
-//	fmt.Printf("%s", bs)
-//}
-
-//func printGetBlock(bytesString string) {
-//	var response BlockResponse
-//
-//	json.Unmarshal([]byte(bytesString), &response)
-//
-//	//bs, _ := json.Marshal(response)
-//	//fmt.Printf("%s", bs)
-//
-//	//printTxValues(response.Result.Transactions)
-//
-//	//i, err := hexutil.DecodeUint64(response.Result.Number)
-//	////i, err:= strconv.ParseInt("558913", 16, 64)
-//	//if err != nil {
-//	//	fmt.Println(err)
-//	//}
-//	//
-//	//fmt.Printf("There are %v transactions inside of block %v", len(response.Result.Transactions), i)
-//}
-
-//func printTxValues(arrayOfTransactions []TxResponse) {
-//
-//	fmt.Println(len(arrayOfTransactions))
-//
-//	//for _, tx := range arrayOfTransactions {
-//	//	fmt.Println(tx.Hash)
-//	//}
-//}
