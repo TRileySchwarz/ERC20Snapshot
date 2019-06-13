@@ -15,7 +15,7 @@ func main() {
 	fmt.Println("-- Starting program --")
 	fmt.Println("\n")
 
-	blockNumber := 7040275
+	blockNumber := 4995790
 	// !!! The token address must be in this hex format, not all lowercase
 	tokenAddress := "0xEA38eAa3C86c8F9B751533Ba2E562deb9acDED40"
 	currentProvider := InfuraProvider + lib.ProjectID
