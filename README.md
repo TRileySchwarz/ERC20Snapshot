@@ -18,6 +18,22 @@ see what the balance of that account was at a specific point in the chain(blockn
 attained in the Etherscan parse, and in theory everything should match up. The code will output console logs 
 indicating any discrepancies found. 
 
+- Requires up to date installation of Go - https://golang.org/doc/install
+
+## Configurations
+
+Inside of main.go there are a few configurations you can set to run the program
+
+![configurations](/captures/configurations.png?raw=true)
+
+## Running the program
+
+After setting the corresponding configurations run main.go from the root folder
+
+    $ go run main.go
+
+![ERC20Snapshot](/captures/Snapshot.gif)
+
 ## Concurrency
 When verifying the Etherscan results against the Geth node, we must make an individual call per address. In most
 cases the token can have thousands of addresses we need to lookup. To make this process faster most Geth providers
@@ -25,12 +41,12 @@ have rather generous rate limits so multiple calls can be made without getting r
 inside of the Snapshot.go file that allows you to set the limit on the amount of go routines that can be called. If 
 you are having issues with rate limits, reduce this number. 
 
-TODO:
+
+###TODO:
 - Write tests for all functions
 - Implement command line flags/parameters
-- Write Medium article
 - Get peer review
 - Create better way of logging errors or mismatches in results for larger datasets
 - Example use cases
-- Add creative(gif) of program running
+- Add headers to the CSV that is saved
 

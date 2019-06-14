@@ -160,7 +160,7 @@ func GetTokenWallets(tokenAddress string, endBlock int64) []string {
 			"&endblock=" +
 			strconv.FormatInt(endBlock, 10)
 
-		log.Printf("Querying Etherscan API with the following url: %v \n", url)
+		log.Printf("Querying Etherscan API with the following url: \n%v\n", url)
 
 		// Create httpGet Response
 		resp, err := http.Get(url)
