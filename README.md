@@ -42,7 +42,7 @@ inside of the Snapshot.go file that allows you to set the limit on the amount of
 you are having issues with rate limits, reduce this number. 
 
 
-###TODO:
+### TODO:
 - Write tests for all functions
 - Implement command line flags/parameters
 - Get peer review
